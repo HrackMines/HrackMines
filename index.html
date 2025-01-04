@@ -3,22 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema API Mines</title>
+    <title>Tabuleiro Interativo</title>
     <style>
         body {
             font-family: Arial, sans-serif;
             text-align: center;
-        }
-        textarea {
-            width: 90%;
-            height: 100px;
-            margin-bottom: 20px;
-            font-size: 1.2rem;
-        }
-        button {
-            padding: 10px 20px;
-            font-size: 1rem;
-            margin-bottom: 20px;
+            margin: 20px;
         }
         .tabuleiro {
             display: grid;
@@ -44,89 +34,96 @@
         .quadrado.estrela {
             color: gold;
         }
+        button {
+            padding: 10px 20px;
+            font-size: 1rem;
+            margin: 20px;
+        }
+        #apiResult {
+            margin-top: 20px;
+            font-size: 1rem;
+        }
     </style>
 </head>
 <body>
-    <h1>Sistema API Mines</h1>
-    <textarea id="inputLayout" placeholder="Insira o layout (⭐ e 💣)..."></textarea>
-    <br>
+    <h1>Tabuleiro Interativo</h1>
+    <div id="tabuleiro" class="tabuleiro"></div>
     <button onclick="processLayout()">Enviar para API</button>
-
-    <h2>Tabuleiro Interativo</h2>
-    <div id="tabuleiroInterativo" class="tabuleiro"></div>
-
-    <h2>Tabuleiro API</h2>
-    <div id="tabuleiroAPI" class="tabuleiro"></div>
+    <div id="apiResult"></div>
 
     <script>
+        const tabuleiro = document.getElementById("tabuleiro");
+        const apiResult = document.getElementById("apiResult");
+
+        // Inicializa o tabuleiro 5x5 com estrelas
+        const layout = Array(5).fill().map(() => Array(5).fill("⭐"));
+
+        // Renderiza o tabuleiro na tela
+        function renderTabuleiro() {
+            tabuleiro.innerHTML = ""; // Limpa o tabuleiro anterior
+            layout.forEach((row, rowIndex) => {
+                row.forEach((cell, colIndex) => {
+                    const quadrado = document.createElement("div");
+                    quadrado.className = `quadrado ${cell === "💣" ? "bomba" : "estrela"}`;
+                    quadrado.textContent = cell;
+
+                    // Alternar estado no clique
+                    quadrado.onclick = () => {
+                        if (layout[rowIndex][colIndex] === "⭐") {
+                            layout[rowIndex][colIndex] = "💣";
+                        } else {
+                            layout[rowIndex][colIndex] = "⭐";
+                        }
+                        renderTabuleiro(); // Re-renderiza o tabuleiro
+                    };
+
+                    tabuleiro.appendChild(quadrado);
+                });
+            });
+        }
+
+        // Processa o layout e faz a chamada para a API
         function processLayout() {
-            const input = document.getElementById("inputLayout").value.trim();
-            const rows = input.split("\n");
+            // Converte o layout para a chave ID
+            const chaveID = layout
+                .flat()
+                .map(cell => (cell === "⭐" ? "0" : "1"))
+                .join("");
 
-            // Validação básica
-            if (rows.length !== 5 || rows.some(row => row.length !== 5)) {
-                alert("O layout deve ser um tabuleiro 5x5 com ⭐ e 💣.");
-                return;
-            }
-
-            // Converter para chave ID Mines
-            const chaveID = rows.map(row => row.replace(/⭐/g, "0").replace(/💣/g, "1")).join("");
             const apiUrl = `https://hrackmines.github.io/Api/v1/${chaveID}.txt`;
 
-            // Criar tabuleiro interativo
-            createInteractiveBoard(chaveID);
-
-            // Fazer requisição para a API
+            // Faz a requisição para a API
             fetch(apiUrl)
                 .then(response => {
                     if (!response.ok) throw new Error("Erro ao acessar a API.");
                     return response.json();
                 })
                 .then(data => {
-                    createAPIBoard(data);
+                    renderAPIResult(data);
                 })
                 .catch(error => {
-                    alert(`Erro: ${error.message}`);
+                    apiResult.textContent = `Erro: ${error.message}`;
                 });
         }
 
-        function createInteractiveBoard(chaveID) {
-            const tabuleiro = document.getElementById("tabuleiroInterativo");
-            tabuleiro.innerHTML = ""; // Limpa o tabuleiro anterior
-
-            chaveID.split("").forEach((cell, index) => {
-                const quadrado = document.createElement("div");
-                quadrado.className = `quadrado ${cell === "1" ? "bomba" : "estrela"}`;
-                quadrado.textContent = cell === "1" ? "💣" : "⭐";
-
-                // Alternar estado no clique
-                quadrado.onclick = () => {
-                    if (quadrado.classList.contains("estrela")) {
-                        quadrado.classList.remove("estrela");
-                        quadrado.classList.add("bomba");
-                        quadrado.textContent = "💣";
-                    } else {
-                        quadrado.classList.remove("bomba");
-                        quadrado.classList.add("estrela");
-                        quadrado.textContent = "⭐";
-                    }
-                };
-
-                tabuleiro.appendChild(quadrado);
-            });
-        }
-
-        function createAPIBoard(data) {
-            const tabuleiro = document.getElementById("tabuleiroAPI");
-            tabuleiro.innerHTML = ""; // Limpa o tabuleiro anterior
+        // Exibe o resultado da API em outro tabuleiro
+        function renderAPIResult(data) {
+            apiResult.innerHTML = "<h2>Resultado da API</h2>";
+            const resultTabuleiro = document.createElement("div");
+            resultTabuleiro.className = "tabuleiro";
 
             Object.entries(data).forEach(([key, value]) => {
                 const quadrado = document.createElement("div");
                 quadrado.className = `quadrado ${value === "true" ? "bomba" : "estrela"}`;
                 quadrado.textContent = value === "true" ? "💣" : "⭐";
-                tabuleiro.appendChild(quadrado);
+                resultTabuleiro.appendChild(quadrado);
             });
+
+            apiResult.appendChild(resultTabuleiro);
         }
+
+        // Inicializa o tabuleiro na tela
+        renderTabuleiro();
     </script>
 </body>
 </html>
