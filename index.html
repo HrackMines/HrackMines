@@ -1,112 +1,148 @@
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <title>Hrack Mines</title>
+  <title>Campo Minado</title>
   <style>
     body {
-      background-color: #111;
-      color: white;
-      font-family: Arial, sans-serif;
-      text-align: center;
-      padding: 20px;
+      font-family: 'Segoe UI', sans-serif;
+      background: #f5f5f5;
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
     }
-    #status {
-      margin-top: 20px;
-      font-size: 1.2em;
+
+    h2 {
+      margin: 10px 0 5px;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(5, 60px);
+      gap: 6px;
+      background: #ccc;
+      padding: 12px;
+      border-radius: 10px;
+      box-shadow: 0 0 15px rgba(0,0,0,0.2);
+    }
+
+    .cell {
+      width: 60px;
+      height: 60px;
+      background: #e0e0e0;
+      border: 2px solid #bbb;
+      border-radius: 8px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-size: 28px;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-family: monospace;
+    }
+
+    .cell.true {
+      background: #ffb3b3;
+      border-color: #ff6666;
+    }
+
+    button {
+      margin-top: 15px;
+      padding: 10px 25px;
+      font-size: 16px;
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      box-shadow: 0 3px 5px rgba(0,0,0,0.1);
+    }
+
+    button:hover {
+      background-color: #0056b3;
+    }
+
+    .mensagem {
+      margin-top: 15px;
+      font-size: 18px;
+      color: green;
+      font-weight: bold;
     }
   </style>
 </head>
 <body>
-  <h1>Sistema Hrack Mines</h1>
-  <div id="status">Iniciando...</div>
+
+  <div class="container">
+    <h2>Campo Minado 5x5</h2>
+    <p>Clique nos quadrados para marcar bomba (💣)</p>
+
+    <div class="grid" id="grid"></div>
+    <button onclick="enviarParaFirebase()">Start</button>
+    <div class="mensagem" id="mensagem"></div>
+  </div>
 
   <script>
-    const apiBombasBase = 'https://hrackmines-default-rtdb.firebaseio.com/Api/Mines/';
-    const apiEnvioBase = 'https://hrackmines-default-rtdb.firebaseio.com/Api/Hrack/';
-    const maxVisualizacoes = 100;
+    const grid = document.getElementById('grid');
+    const mensagem = document.getElementById('mensagem');
+    const estados = Array(25).fill("false");
 
-    async function fetchJson(url) {
-      const res = await fetch(url);
-      return res.json();
-    }
+    function atualizarCelula(id) {
+      const celula = document.getElementById(`cell-${id}`);
+      celula.className = 'cell';
+      celula.textContent = "";
 
-    async function sendJson(url, data) {
-      await fetch(url, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-    }
-
-    function getRandomQuadrado() {
-      return Math.floor(Math.random() * 25) + 1;
-    }
-
-    async function main() {
-      const status = document.getElementById('status');
-      status.textContent = 'Lendo bombas do servidor...';
-
-      try {
-        // 1. Buscar bombas com chaves N1 a N25
-        const bombas = [];
-        for (let i = 1; i <= 25; i++) {
-          const dados = await fetchJson(`${apiBombasBase}N${i}.json`);
-          if (dados === "true") bombas.push(i);
-        }
-
-        const qtdBombas = bombas.length;
-
-        if (qtdBombas === 0) {
-          status.textContent = 'Nenhuma bomba detectada.';
-          return;
-        }
-
-        status.textContent = `Detectadas ${qtdBombas} bombas. Iniciando simulação...`;
-
-        // 2. Inicializar contadores
-        const visualizacoes = {};
-        for (let i = 1; i <= 25; i++) visualizacoes[i] = 0;
-
-        // 3. Iniciar loop
-        const loop = setInterval(() => {
-          for (let i = 0; i < qtdBombas; i++) {
-            const pos = getRandomQuadrado();
-            visualizacoes[pos]++;
-            status.textContent = `Bomba caiu no quadrado ${pos} (Total: ${visualizacoes[pos]})`;
-          }
-
-          for (let q in visualizacoes) {
-            if (visualizacoes[q] >= maxVisualizacoes) {
-              clearInterval(loop);
-              status.textContent = `Quadrado ${q} atingiu ${maxVisualizacoes}. Enviando dados...`;
-
-              const envios = [];
-              for (const n in visualizacoes) {
-                if (visualizacoes[n] > 0) {
-                  const chave = `N${n}`;
-                  const url = `${apiEnvioBase}${chave}.json`;
-                  const valor = `${visualizacoes[n]}%`;
-                  envios.push(sendJson(url, valor));
-                }
-              }
-
-              Promise.all(envios).then(() => {
-                status.textContent = 'Dados enviados com sucesso.';
-              });
-
-              break;
-            }
-          }
-        }, 100);
-
-      } catch (e) {
-        status.textContent = 'Erro: ' + e.message;
-        console.error(e);
+      if (estados[id] === "true") {
+        celula.classList.add("true");
+        celula.textContent = "💣";
       }
     }
 
-    main();
+    function clicarCelula(id) {
+      estados[id] = estados[id] === "false" ? "true" : "false";
+      atualizarCelula(id);
+    }
+
+    for (let i = 0; i < 25; i++) {
+      const celula = document.createElement('div');
+      celula.id = `cell-${i}`;
+      celula.className = 'cell';
+      celula.onclick = () => clicarCelula(i);
+      grid.appendChild(celula);
+    }
+
+    async function enviarParaFirebase() {
+      const dados = {};
+      for (let i = 0; i < 25; i++) {
+        dados[`N${i + 1}`] = estados[i];
+      }
+
+      try {
+        const resposta = await fetch('https://hrackmines-default-rtdb.firebaseio.com/Api/Mines.json', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(dados)
+        });
+
+        if (resposta.ok) {
+          window.location.href = "https://add.com"; // Redireciona após salvar
+        } else {
+          mensagem.textContent = "Erro ao salvar no banco.";
+        }
+      } catch (e) {
+        console.error(e);
+        mensagem.textContent = "Erro ao conectar.";
+      }
+    }
   </script>
+
 </body>
 </html>
