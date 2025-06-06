@@ -44,6 +44,7 @@
       cursor: pointer;
       transition: 0.2s;
       position: relative;
+      user-select: none;
     }
 
     .cell span {
@@ -57,12 +58,14 @@
     .marked {
       background-color: red !important;
       box-shadow: inset 2px 2px 5px #660000, inset -2px -2px 5px #ff4444;
+      cursor: pointer;
     }
 
     .green {
       background-color: #2e8b57 !important;
       background-image: none !important;
       box-shadow: none !important;
+      cursor: default;
     }
 
     #status {
@@ -79,6 +82,12 @@
       background-color: #444;
       color: #fff;
       border-radius: 5px;
+      user-select: none;
+      transition: background-color 0.3s;
+    }
+    button:disabled {
+      background-color: #888;
+      cursor: not-allowed;
     }
 
     #loader {
@@ -93,6 +102,7 @@
       align-items: center;
       flex-direction: column;
       z-index: 1000;
+      user-select: none;
     }
 
     .spinner {
@@ -125,7 +135,7 @@
     <div>Localização de Tentativas em Tempo Real</div>
     <div class="board" id="clickHintBoard"></div>
 
-    <button id="startBtn">Start</button>
+    <button id="startBtn" disabled>Start</button>
     <div id="status">Marque as bombas e clique em Start</div>
   </div>
 
@@ -144,19 +154,26 @@
     const countDiv = document.getElementById('count');
 
     const visualizacoes = {};
-    const bombas = [];
+    let bombas = [];
+    let tentativa = 0;
+    let animId = null;
 
+    // Criação dos tabuleiros
     for (let i = 1; i <= 25; i++) {
+      // Tabuleiro de marcação
       const markCell = document.createElement('div');
       markCell.className = 'cell';
       markCell.innerHTML = '⭐';
       markCell.addEventListener('click', () => {
+        if (loader.style.display === 'flex') return; // trava durante execução
         markCell.classList.toggle('marked');
         markCell.innerHTML = markCell.classList.contains('marked') ? '💣' : '⭐';
         markCell.style.backgroundColor = markCell.classList.contains('marked') ? 'red' : '';
+        atualizarBotaoStart();
       });
       markBoard.appendChild(markCell);
 
+      // Tabuleiro de tentativas
       const hintCell = document.createElement('div');
       hintCell.className = 'cell';
       hintCell.id = 'hint-' + i;
@@ -165,91 +182,136 @@
       visualizacoes[i] = 0;
     }
 
+    function atualizarBotaoStart() {
+      // Ativa o botão start só se tiver ao menos 1 bomba marcada
+      const markedCount = document.querySelectorAll('#markBoard .cell.marked').length;
+      startBtn.disabled = markedCount === 0;
+      statusDiv.textContent = markedCount === 0 ? 'Marque as bombas e clique em Start' : 'Bombas marcadas: ' + markedCount;
+    }
+
     function getRandomPosition() {
       return Math.floor(Math.random() * 25) + 1;
     }
 
-    startBtn.addEventListener('click', () => {
-      bombas.length = 0;
-      const marked = Array.from(document.querySelectorAll('#markBoard .cell'));
-      marked.forEach((cell, idx) => {
-        if (cell.classList.contains('marked')) bombas.push(idx + 1);
-      });
-
-      if (bombas.length === 0) {
-        statusDiv.textContent = 'Marque pelo menos uma bomba antes de começar!';
-        return;
-      }
-
+    function resetVisualizacoes() {
       for (let i = 1; i <= 25; i++) {
         visualizacoes[i] = 0;
         const hintCell = document.getElementById('hint-' + i);
         hintCell.innerHTML = '';
         hintCell.classList.remove('green');
         hintCell.style.backgroundColor = '';
+        hintCell.style.cursor = 'default';
       }
+    }
 
-      statusDiv.textContent = 'Localizando bombas...';
-      loader.style.display = 'flex';
+    function atualizarVisualizacao() {
+      for (let i = 1; i <= 25; i++) {
+        const hintCell = document.getElementById('hint-' + i);
+        if (visualizacoes[i] > 0) {
+          hintCell.innerHTML = '💣<span>' + visualizacoes[i] + '</span>';
+        } else {
+          hintCell.innerHTML = '';
+        }
+      }
+    }
 
-      let tentativa = 0;
-      const TENTATIVAS_POR_CICLO = 1000000;
+    function destacarMenor() {
+      const valores = Object.values(visualizacoes).filter(v => v > 0);
+      if (valores.length === 0) return;
+      const menor = Math.min(...valores);
 
-      const interval = setInterval(() => {
-        for (let j = 0; j < TENTATIVAS_POR_CICLO; j++) {
-          tentativa++;
-          const rodada = [];
+      for (let i = 1; i <= 25; i++) {
+        const hintCell = document.getElementById('hint-' + i);
+        if (visualizacoes[i] === menor) {
+          hintCell.classList.add('green');
+          hintCell.style.cursor = 'default';
+        } else {
+          hintCell.classList.remove('green');
+          hintCell.style.cursor = 'default';
+        }
+      }
+    }
+
+    function pararExecucao() {
+      if (animId) {
+        cancelAnimationFrame(animId);
+        animId = null;
+      }
+      loader.style.display = 'none';
+      startBtn.disabled = false;
+      // Reabilita clique nas células de marcação
+      markBoard.querySelectorAll('.cell').forEach(cell => {
+        cell.style.pointerEvents = 'auto';
+      });
+    }
+
+    function rodarTentativas() {
+      const TENTATIVAS_POR_CICLO = 5000; // Ajuste para não travar
+
+      for (let j = 0; j < TENTATIVAS_POR_CICLO; j++) {
+        tentativa++;
+        const rodada = [];
+
+        for (let i = 0; i < bombas.length; i++) {
+          const pos = getRandomPosition();
+          rodada.push(pos);
+          visualizacoes[pos]++;
+        }
+
+        if (tentativa % 1000 === 0) {
+          atualizarVisualizacao();
+          countDiv.textContent = `Tentativas: ${tentativa}`;
+        }
+
+        // Verifica se acertou todas as bombas
+        const allMatched = bombas.every(pos => rodada.includes(pos));
+        if (allMatched) {
+          // Tentativa extra
           for (let i = 0; i < bombas.length; i++) {
             const pos = getRandomPosition();
-            rodada.push(pos);
             visualizacoes[pos]++;
           }
 
-          // Atualiza visualização ao vivo
-          for (let i = 1; i <= 25; i++) {
-            const hintCell = document.getElementById('hint-' + i);
-            if (visualizacoes[i] > 0) {
-              hintCell.innerHTML = '💣<span>' + visualizacoes[i] + '</span>';
-            }
-          }
-
-          const allMatched = bombas.every(pos => rodada.includes(pos));
-          if (allMatched) {
-            clearInterval(interval);
-
-            // Tentativa extra
-            const extra = [];
-            for (let i = 0; i < bombas.length; i++) {
-              const pos = getRandomPosition();
-              extra.push(pos);
-              visualizacoes[pos]++;
-            }
-
-            loader.style.display = 'none';
-            statusDiv.textContent = `Localização encontrada após ${tentativa} tentativas (extra incluída)!`;
-
-            const valores = Object.values(visualizacoes).filter(v => v > 0);
-            const menor = Math.min(...valores);
-
-            for (let i = 1; i <= 25; i++) {
-              const hintCell = document.getElementById('hint-' + i);
-              if (visualizacoes[i] > 0) {
-                hintCell.innerHTML = '💣<span>' + visualizacoes[i] + '</span>';
-                if (visualizacoes[i] === menor) {
-                  hintCell.classList.add('green');
-                }
-              } else {
-                hintCell.innerHTML = '';
-                hintCell.classList.remove('green');
-              }
-            }
-
-            return;
-          }
+          atualizarVisualizacao();
+          destacarMenor();
+          statusDiv.textContent = `Localização encontrada após ${tentativa} tentativas (extra incluída)!`;
+          pararExecucao();
+          return;
         }
-        countDiv.textContent = `Tentativas: ${tentativa}`;
-      }, 1);
+      }
+
+      animId = requestAnimationFrame(rodarTentativas);
+    }
+
+    startBtn.addEventListener('click', () => {
+      bombas = [];
+      tentativa = 0;
+
+      // Impede clicar nas células enquanto executa
+      markBoard.querySelectorAll('.cell').forEach(cell => {
+        cell.style.pointerEvents = 'none';
+      });
+
+      const markedCells = Array.from(document.querySelectorAll('#markBoard .cell.marked'));
+      bombas = markedCells.map((cell, idx) => idx + 1);
+
+      if (bombas.length === 0) {
+        statusDiv.textContent = 'Marque pelo menos uma bomba antes de começar!';
+        return;
+      }
+
+      resetVisualizacoes();
+      countDiv.textContent = `Tentativas: 0`;
+      statusDiv.textContent = 'Localizando bombas...';
+      loader.style.display = 'flex';
+      startBtn.disabled = true;
+
+      rodarTentativas();
     });
+
+    // Inicializa botão start desabilitado
+    atualizarBotaoStart();
+
   </script>
 </body>
 </html>
